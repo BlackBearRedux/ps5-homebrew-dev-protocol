@@ -17,8 +17,8 @@ a slow build.
 - **Check layout by rule, not by eye.** A host run can walk every screen in every language
   and fail when text leaves its box. Do it there, not with a controller.
 - **Script the model.** Drive the app's state machine on the PC with a pretend network or
-  device and assert the outcomes. Hardware is for what only hardware has: the loader, the
-  decoder, the display, timing.
+  device and assert the outcomes. Reserve console runs for behavior that depends on the device, such as
+  title launch, display output, or timing.
 - **Stand in for the far side with a file.** A feature that waits on something remote (a
   newer release to update to, a server's answer, a catalog entry) is slow to test against
   the real thing. Let a development build read the same answer from a small file in its
@@ -131,14 +131,13 @@ that is running.
 ## 5. Make each launch answer several questions
 
 - **Self-running builds.** A compile-time switch that makes the app do the test by itself
-  (open the screen, start the stream, run the benchmark) and then stay in a known state
+  (open a screen, load a fixture, or run a benchmark) and then stay in a known state
   turns a cycle into install, launch, read the log. No input channel is needed, and the
   run is the same every time.
 - **A log the app owns.** Append to `/data/<TITLE_ID>/app.log` when the title can write there,
   flush it on a timer, and prefix lines with fixed tags so one `grep` finds them. Log, at
   least: the build's label, where storage ended up, each start-up stage with the
-  milliseconds since launch, and every result code at the boundaries that fail on hardware
-  (display, decoder, audio, network, shutdown). A buffered log that is only flushed at
+  milliseconds since launch, and the result codes from the platform calls the test exercises. A buffered log that is only flushed at
   exit holds nothing when the exit is the failure.
 - **Numbers, not impressions.** "First frame after 483 ms" compares across builds; "it
   felt slower" does not.
@@ -150,7 +149,7 @@ that is running.
   same app with writable data storage uses the persistent title log. Report the selected
   path in klog at startup. Retrieve sandbox-only evidence while the title is mounted.
 - **Say when a mode switches on.** Behaviour that depends on what the running content asks
-  for (a controller style, a display mode, a codec path) should log one line when it
+  for (a controller style or a display mode) should log one line when it
   engages and when it lets go. "It did nothing" and "it did the wrong thing" then read
   differently in the log.
 - **A command file for scripted sessions.** A development build can poll a small file in

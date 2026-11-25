@@ -11,9 +11,9 @@ The repository gives you two things:
 - **Automation**: scripts that deploy, launch, observe, capture, and close a
   title over the LAN without anyone touching a controller.
 
-It was written for humans and for coding agents that work on a console. The
-rules are deliberately strict so that unattended runs stay safe and their
-results can be reproduced.
+Use the same console cycle for each title. In the app's own test plan, specify
+the build command, any fixtures or inputs, the expected behavior, and the
+evidence that demonstrates it.
 
 ## Launch and close apps without a controller
 
@@ -131,7 +131,7 @@ The full procedure is in the [runbook](docs/RUNBOOK.md).
 | [`docs/PROJECT_PLAN_TEMPLATE.md`](docs/PROJECT_PLAN_TEMPLATE.md) | Template for a new project plan |
 | [`docs/HANDOFF_TEMPLATE.md`](docs/HANDOFF_TEMPLATE.md) | Template for handing work to another developer or agent |
 | [`scripts/`](scripts) | Managed cycle, controllers, and console helpers |
-| [`examples/iptv/`](examples/iptv) | An application-specific wrapper with fixtures and receipt validation, built on the legacy Windows cycle |
+| [`examples/`](examples/) | Optional examples of how individual projects use the protocol |
 | [`scripts/readme-footer/`](scripts/readme-footer) | Generator for the standard footer used across BlackBearReloaded repositories |
 | [`AGENTS.md`](AGENTS.md) | Instructions for coding agents |
 | `results/` | Local evidence output (ignored by Git) |

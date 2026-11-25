@@ -18,10 +18,9 @@ experiment.
 
 ## 2. Finish offline first
 
-Use WSL to format, lint, test, build, package, and inspect the smallest useful
-change. Prefer secure C++20: RAII, unique ownership, bounded containers/views,
-validated sizes and offsets, checked API results, explicit C ABI boundaries,
-warnings as errors, and deterministic shutdown.
+Run the project's documented format, lint, test, build, and packaging checks
+with its supported toolchain. Inspect the resulting artifact before staging it.
+Keep language conventions and fixture setup in the project's own documentation.
 
 Commit the exact candidate before hardware validation. Record tool versions,
 file sizes, and SHA-256 for the executable, runtime modules, metadata, and
