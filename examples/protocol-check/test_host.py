@@ -89,7 +89,7 @@ class ProtocolTests(TestCase):
         self.assertIn("differs from its SHA256SUMS", proc.stdout)
         self.assertFalse((self.root / "lock").exists())
 
-    def simulated_cycle(self, *, titles_error=False, after="running"):
+    def simulated_cycle(self, *, titles_error=False, after="running", app_log=None, logs=()):
         # Use the actual coordinator with inert transport and an isolated script directory.
         helpers = self.root / "helpers"
         helpers.mkdir()
@@ -99,6 +99,7 @@ class ProtocolTests(TestCase):
             "import os, sys\nfrom pathlib import Path\n"
             "op = sys.argv[1]\nmarker = Path(os.environ['MARKER'])\n"
             "if op == 'install': marker.touch()\n"
+            "if op == 'fetch': print('evidence', *sys.argv[3:])\n"
             "if op == 'titles' and os.environ['TITLES_ERROR'] == '1': sys.exit(4)\n"
             "print({'titles':'running: none', 'state':os.environ['AFTER'] if marker.exists() "
             "else 'closed', 'errors':'error records: 0', 'where':'folder /data/homebrew/' "
@@ -108,13 +109,25 @@ class ProtocolTests(TestCase):
                    PS5_RESULTS=str(self.root / 'logs'), PS5_RUN="0", PS5_SETTLE="0", PS5_KLOG="0",
                    PS5_LAUNCH="1", PS5_CLOSE="0", PS5_READY_LOG="", PS5_OTHER_TITLES="0",
                    MARKER=str(marker), TITLES_ERROR=str(int(titles_error)), AFTER=after)
-        return subprocess.run(["bash", helpers / "ps5-cycle.sh", TITLE, self.candidate],
+        env.pop('PS5_APP_LOG', None)
+        if app_log is not None:
+            env['PS5_APP_LOG'] = app_log
+        return subprocess.run(["bash", helpers / "ps5-cycle.sh", TITLE, self.candidate, *logs],
                               env=env, text=True, capture_output=True), marker
 
     def test_normal_simulated_cycle(self):
         proc, marker = self.simulated_cycle()
         self.assertEqual(proc.returncode, 0, proc.stdout)
         self.assertTrue(marker.exists())
+        self.assertIn(f'evidence /data/{TITLE}/app.log\n', proc.stdout)
+
+    def test_custom_app_log_collected_once_with_other_evidence(self):
+        proc, _ = self.simulated_cycle(app_log='/data/custom.log', logs=('/data/other.log', '/data/custom.log'))
+        self.assertIn('evidence /data/other.log /data/custom.log\n', proc.stdout)
+
+    def test_disable_default_fetch_preserves_explicit_logs(self):
+        proc, _ = self.simulated_cycle(app_log='', logs=('/data/other.log',))
+        self.assertIn('evidence /data/other.log\n', proc.stdout)
 
     @expectedFailure
     def test_unknown_foreground_stops_install(self):

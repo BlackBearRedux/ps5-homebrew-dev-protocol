@@ -54,7 +54,10 @@ From WSL or Linux, `scripts/ps5-cycle.sh` runs these steps as one command;
    Do not launch on a hash mismatch or ambiguous registration. After an upload, and after any unexpected console
    restart, wait about two minutes and compare the install again: a console can
    come back from a crash with the last files written as zero bytes.
-4. **Observe:** Save klog to a file before launching the exact title. Run once
+4. **Observe:** Append app checkpoints to `/data/<TITLE_ID>/app.log` when writable.
+   Include a build or run identifier at startup and record the selected path in klog.
+   The managed cycle fetches this persistent log at the end of a launch run. For a
+   sandbox-only title, collect its app log while mounted. Save klog before launch. Run once
    for a bounded period, ended by the app's own ready line where it has one. Capture only evidence required by the criterion:
    ShadowMount lifecycle, the app's own log, or a declared debugger
    snapshot.

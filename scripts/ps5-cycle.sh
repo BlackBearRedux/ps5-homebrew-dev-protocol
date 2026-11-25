@@ -16,6 +16,7 @@
 #   PS5_LOCK        lock file shared by everyone who uses this console (required to
 #                   launch or close; an install of a closed title needs none)
 #   PS5_APP_LOG     persistent app log to collect (default /data/<TITLE>/app.log; empty disables)
+#   PS5_FALLBACK_LOG  legacy sandbox log to fetch while mounted (empty disables)
 #   PS5_AGENT       who holds the lock, written into it (default: user@host)
 #   PS5_ELF_PORT    ELF loader port (default 9021)
 #   PS5_SETTLE      seconds to watch after the upload (default 130; 0 skips)
@@ -122,6 +123,8 @@ fi
 # wrong are the ones worth having.
 problem=
 if [[ ${PS5_LAUNCH:-1} == 1 ]]; then
+    primary_start=0
+    [[ -z $app_log ]] || primary_start=$("${console[@]}" size "$app_log")
     offset=0
     [[ -z ${PS5_READY_LOG:-} ]] || offset=$("${console[@]}" size "$PS5_READY_LOG")
     if [[ ${PS5_KLOG:-1} == 1 ]] && command -v nc > /dev/null; then
@@ -146,6 +149,22 @@ if [[ ${PS5_LAUNCH:-1} == 1 ]]; then
     fi
     state=$("${console[@]}" state "$title") || { state=unknown; problem="the console stopped answering after the launch: do not retry"; }
     step "after $((SECONDS - started)) s: $state"
+    fallback=${PS5_FALLBACK_LOG-/mnt/sandbox/${title}_000/download0/app.log}
+    if [[ $state == running && -n $app_log && -n $fallback && $fallback != "$app_log" ]]; then
+        primary_end=$("${console[@]}" size "$app_log")
+        if [[ $primary_end == "$primary_start" || $primary_end == 0 ]]; then
+            fallback_size=$("${console[@]}" size "$fallback")
+            if [[ $fallback_size =~ ^[1-9][0-9]*$ ]]; then
+                "${console[@]}" fetch "$out" "$fallback"
+                # A second fetch after close could erase the saved sandbox evidence.
+                keep=()
+                for path in "${logs[@]}"; do
+                    [[ $path == "$fallback" || $path == "$app_log" ]] || keep+=("$path")
+                done
+                logs=("${keep[@]}")
+            fi
+        fi
+    fi
     if [[ ${PS5_CLOSE:-0} == 1 && $state == running ]]; then
         bash "$here/send-controller.sh" close "$title" "$PS5_HOST" "$port" > /dev/null 2>&1
         sleep 6

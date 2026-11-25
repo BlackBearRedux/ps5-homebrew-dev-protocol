@@ -50,7 +50,7 @@ scripts/freeze-candidate.sh dist/PPSA99999 ~/candidates/menu-fix-1
 ```bash
 export PS5_HOST=192.0.2.10 PS5_LOCK=/path/shared/lock-console-a.txt
 scripts/ps5-cycle.sh PPSA99999 ~/candidates/menu-fix-1/PPSA99999 \
-    /data/myapp/logs/app.log /data/shadowmount/debug.log
+    /data/shadowmount/debug.log
 ```
 
 [`ps5-cycle.sh`](../scripts/ps5-cycle.sh) does the runbook's cycle from WSL or Linux and
@@ -134,7 +134,7 @@ that is running.
   (open the screen, start the stream, run the benchmark) and then stay in a known state
   turns a cycle into install, launch, read the log. No input channel is needed, and the
   run is the same every time.
-- **A log the app owns.** Write to a file in a folder that survives updates and restarts,
+- **A log the app owns.** Append to `/data/<TITLE_ID>/app.log` when the title can write there,
   flush it on a timer, and prefix lines with fixed tags so one `grep` finds them. Log, at
   least: the build's label, where storage ended up, each start-up stage with the
   milliseconds since launch, and every result code at the boundaries that fail on hardware
@@ -147,8 +147,8 @@ that is running.
   from the first instruction on. When the app closes before its own log exists, the
   kernel log still says how far it got, and a tester on another console can send it.
 - **Know where the log is in each mode.** A sandboxed app writes inside its sandbox; the
-  same app with filesystem access writes to its data folder. Log the folder at start and
-  give the cycle both paths: the one that does not exist is reported as absent.
+  same app with writable data storage uses the persistent title log. Report the selected
+  path in klog at startup. Retrieve sandbox-only evidence while the title is mounted.
 - **Say when a mode switches on.** Behaviour that depends on what the running content asks
   for (a controller style, a display mode, a codec path) should log one line when it
   engages and when it lets go. "It did nothing" and "it did the wrong thing" then read

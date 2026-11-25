@@ -66,6 +66,8 @@ Common environment variables:
 | `PS5_HOST` | All PowerShell helpers, `ps5-cycle.sh`, `ps5-console.py` | Console address when `-Ps5Host` is omitted |
 | `PS5_LOCK` | `ps5-cycle.sh` | Lock file shared by everyone who uses that console |
 | `PS5_SETTLE`, `PS5_RUN`, `PS5_LAUNCH`, `PS5_CLOSE` | `ps5-cycle.sh` | Seconds to watch after the upload (130), seconds to run (45), `0` to install only, `1` to close after the run |
+| `PS5_APP_LOG` | `ps5-cycle.sh` | Persistent app log collected alongside explicit evidence paths after a launch. Defaults to `/data/<TITLE_ID>/app.log`. Set an empty value to omit the automatic fetch. |
+| `PS5_FALLBACK_LOG` | `ps5-cycle.sh` | If the persistent log is missing or its size is unchanged, collect this nonempty legacy file before closing the title. Defaults to `/mnt/sandbox/<TITLE_ID>_000/download0/app.log`. Override for older filenames or set empty to disable. |
 | `PS5_READY_LOG`, `PS5_READY_PATTERN` | `ps5-cycle.sh` | A log the app writes and a regular expression: go on when a new line matches, fail after `PS5_RUN` seconds without one |
 | `PS5_KLOG`, `PS5_KLOG_PORT` | `ps5-cycle.sh` | `0` does not record the kernel log during the run; its port (`3232`) |
 | `PS5_OTHER_TITLES` | `ps5-cycle.sh` | `1` launches although another title is running |

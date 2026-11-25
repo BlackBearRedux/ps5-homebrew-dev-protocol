@@ -6,6 +6,12 @@ command `NEXT` followed by a newline. The app changes its label, draws a yellow 
 saves the new canvas. The runner checks both 1920×1080 images and the ordered app log before
 it acknowledges completion. These images capture the app's drawing buffer.
 
+The example appends to `/data/PPSA99871/app.log` and sends the same checkpoints to klog.
+If the app cannot write the persistent log, it uses `/download0/protocol-log.txt`.
+The host checks for new persistent bytes relative to the pre-launch size, and verifies
+the three ordered checkpoints after the cycle. A legacy sandbox log must be retrieved
+while the title is open. Screenshots and input commands also use the live sandbox.
+
 ## Build and run
 
 Use Linux or WSL with the configured [native app boilerplate](https://github.com/ursonegro/ps5-native-app-boilerplate)

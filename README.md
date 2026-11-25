@@ -86,8 +86,11 @@ and a person's eyes answer the same questions without it
    from, install and settle checks, error records) and what it saved under
    `results/`: the logs you named and the kernel log of the run.
 
+By default the managed cycle collects the app log from `/data/<TITLE_ID>/app.log`
+into the run's results directory. Set `PS5_APP_LOG` for a different persistent path.
+
 To end the wait when the app says it is ready instead of after a fixed time, name
-its log and the line: `PS5_READY_LOG=/data/myapp/logs/app.log PS5_READY_PATTERN='menu ready'`.
+its log and the line: `PS5_READY_LOG=/data/PPSA99999/app.log PS5_READY_PATTERN='menu ready'`.
 
 `PS5_LAUNCH=0` installs and verifies without launching; the other switches are
 listed at the top of the script and in [Tools](docs/TOOLS.md).

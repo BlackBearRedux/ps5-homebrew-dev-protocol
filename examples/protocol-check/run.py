@@ -71,7 +71,7 @@ def run(candidate, out):
     print("Registered. Starting the managed cycle.", flush=True)
     receipt = LIVE + "/accept-" + token + ".txt"
     env = dict(os.environ, PS5_AGENT=token, PS5_RUN="90", PS5_LAUNCH="1", PS5_CLOSE="1",
-               PS5_APP_LOG=APP_LOG, PS5_READY_LOG=receipt, PS5_READY_PATTERN="^ACCEPTED$", PS5_RESULTS=str(out),
+               PS5_APP_LOG=APP_LOG, PS5_FALLBACK_LOG=LIVE + "/protocol-log.txt", PS5_READY_LOG=receipt, PS5_READY_PATTERN="^ACCEPTED$", PS5_RESULTS=str(out),
                PS5_OTHER_TITLES="0", PS5_LOCK_WAIT="0", PS5_KLOG="1")
     args = ["bash", ROOT / "scripts/ps5-cycle.sh", TITLE, candidate, "/data/shadowmount/debug.log"]
     with (out / "cycle.txt").open("w") as log, subprocess.Popen(
@@ -86,19 +86,30 @@ def run(candidate, out):
                 try:
                     if not lock.read_text().startswith(token + "|"):
                         raise RuntimeError("Test does not own the cycle lock")
-                    console("wait", LIVE + "/protocol-log.txt", "^PROTOCOL READY$", "25")
+                    active_log = APP_LOG
+                    offset = log_offset
+                    try:
+                        console("wait", active_log, "^PROTOCOL READY$", "15", offset)
+                    except subprocess.CalledProcessError as exc:
+                        if exc.returncode != 1:
+                            raise
+                        active_log, offset = LIVE + "/protocol-log.txt", 0
+                        console("wait", active_log, "^PROTOCOL READY$", "10")
+                    expected = b"PROTOCOL START V1\nPROTOCOL READY\n"
+                    with api["connect"]() as ftp:
+                        if api["readback"](ftp, active_log)[offset:] != expected:
+                            raise ValueError("Expected this launch to be waiting for input")
                     if console("state", TITLE) != "running":
                         raise RuntimeError("Test title is not running")
                     cmd = out / "command.txt"
                     cmd.write_bytes(b"NEXT\n")
                     console("put", cmd, LIVE + "/protocol-command.txt")
-                    console("wait", LIVE + "/protocol-log.txt", "^PROTOCOL INPUT SAVED$", "25")
-                    paths = [LIVE + "/" + n for n in ("before.ppm", "after.ppm", "protocol-log.txt")]
+                    console("wait", active_log, "^PROTOCOL INPUT SAVED$", "25", offset + len(expected))
+                    paths = [LIVE + "/" + n for n in ("before.ppm", "after.ppm")]
                     console("fetch", out, *paths)
-                    before, after, applog = [out / n.strip("/").replace("/", "_") for n in paths]
+                    before, after = [out / n.strip("/").replace("/", "_") for n in paths]
                     check_images(before, after)
-                    if applog.read_text().splitlines() != ["PROTOCOL START V1", "PROTOCOL READY", "PROTOCOL INPUT SAVED"]:
-                        raise ValueError("Unexpected app log")
+                    expected += b"PROTOCOL INPUT SAVED\n"
                     cmd = out / "accepted.txt"
                     cmd.write_bytes(b"ACCEPTED\n")
                     console("put", cmd, receipt)
@@ -112,13 +123,12 @@ def run(candidate, out):
         raise RuntimeError("Cycle, evidence, or teardown check failed")
     if "PROTOCOL INPUT SAVED" not in (out / "klog.txt").read_text(errors="replace"):
         raise ValueError("Missing kernel log checkpoint")
-    saved_log = out / APP_LOG.strip("/").replace("/", "_")
-    if not saved_log.is_file():
-        raise ValueError("After close: persistent app log unavailable; see sandbox log and klog")
+    saved_log = out / active_log.strip("/").replace("/", "_")
     with saved_log.open("rb") as stream:
-        stream.seek(log_offset)
-        if stream.read() != applog.read_bytes():
-            raise ValueError("After close: persistent log for this run differs from the live app log")
+        stream.seek(offset)
+        if stream.read() != expected:
+            raise ValueError("Saved log does not contain this launch's ordered checkpoints")
+    print("Verified app log:", active_log)
     digest = hashlib.sha256((candidate / "eboot.bin").read_bytes()).hexdigest()
     print(f"Passed {TITLE}, eboot SHA-256 {digest}", flush=True)
 

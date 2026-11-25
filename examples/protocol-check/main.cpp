@@ -41,7 +41,8 @@ bool write_line(const char *path, const char *line, bool reset = false)
 bool record(const char *line, bool reset = false)
 {
     (void)sceKernelDebugOutText(0, line);
-    if (persistent_available && !write_line(persistent, line)) {
+    if (persistent_available) {
+        if (write_line(persistent, line)) return true;
         persistent_available = false;
         (void)sceKernelDebugOutText(0, "PROTOCOL persistent app log unavailable\n");
     }
