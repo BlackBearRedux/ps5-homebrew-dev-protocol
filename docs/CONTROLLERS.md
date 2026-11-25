@@ -65,10 +65,11 @@ close title  →  upload new build (FTP)  →  wait for ShadowMount registration
              →  launch title  →  observe (klog, app log)  →  close title
 ```
 
-`ps5-cycle.sh` implements this loop, including hash verification of a
-pre-built image, waiting for the ShadowMount `installed game` or `mount.lnk`
-event, capturing klog from the moment of launch, and confirming the ShadowMount
-`runtime layers released` event after the close.
+`ps5-cycle.sh` validates the frozen folder and checks which title is running.
+It verifies the installed bytes after the settle period and waits for ShadowMount
+Plus to register the expected source folder before sending launch. After a
+requested close, it checks that the title is closed. To confirm runtime-layer
+release, include the ShadowMount log and check for the title-specific event.
 
 ## What success means
 

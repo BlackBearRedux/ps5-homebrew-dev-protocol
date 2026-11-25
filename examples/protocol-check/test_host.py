@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Offline protocol tests. Expected failures document open issues in the protocol."""
+"""Offline protocol regression tests."""
 from ftplib import error_perm
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest import TestCase, expectedFailure, main, mock
+from unittest import TestCase, main, mock
 import contextlib
 import io
 import os
@@ -86,10 +86,10 @@ class ProtocolTests(TestCase):
         (self.candidate / "asset").write_bytes(b"changed")
         proc = self.cycle()
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("differs from its SHA256SUMS", proc.stdout)
+        self.assertIn("differs from its SHA256SUMS", proc.stderr)
         self.assertFalse((self.root / "lock").exists())
 
-    def simulated_cycle(self, *, titles_error=False, after="running", app_log=None, logs=(), legacy=False):
+    def simulated_cycle(self, *, titles_error=False, after="running", app_log=None, logs=(), legacy=False, before="closed", launch=True):
         # Use the actual coordinator with inert transport and an isolated script directory.
         helpers = self.root / "helpers"
         helpers.mkdir()
@@ -104,12 +104,12 @@ class ProtocolTests(TestCase):
             "if op == 'fetch': print('evidence', *sys.argv[3:])\n"
             "if op == 'titles' and os.environ['TITLES_ERROR'] == '1': sys.exit(4)\n"
             "print({'titles':'running: none', 'state':os.environ['AFTER'] if marker.exists() "
-            "else 'closed', 'errors':'error records: 0', 'where':'folder /data/homebrew/' "
+            "else os.environ['BEFORE'], 'errors':'error records: 0', 'where':'folder /data/homebrew/' "
             "+ sys.argv[-1]}.get(op,''))\n")
         marker = self.root / 'installed'
         env = dict(os.environ, PS5_HOST="fixture", PS5_LOCK=str(self.root / 'lock'),
                    PS5_RESULTS=str(self.root / 'logs'), PS5_RUN="0", PS5_SETTLE="0", PS5_KLOG="0",
-                   PS5_LAUNCH="1", PS5_CLOSE="0", PS5_READY_LOG="", PS5_OTHER_TITLES="0",
+                   PS5_LAUNCH=str(int(launch)), PS5_CLOSE="0", PS5_READY_LOG="", PS5_OTHER_TITLES="0", BEFORE=before,
                    MARKER=str(marker), TITLES_ERROR=str(int(titles_error)), AFTER=after,
                    LEGACY=str(int(legacy)), PS5_FALLBACK_LOG=f'/mnt/sandbox/{TITLE}_000/download0/app.log')
         env.pop('PS5_APP_LOG', None)
@@ -138,22 +138,30 @@ class ProtocolTests(TestCase):
         evidence = [line for line in proc.stdout.splitlines() if line.startswith('evidence ')]
         self.assertEqual(evidence, [f'evidence {legacy}', 'evidence /data/other.log'])
 
-    @expectedFailure
     def test_unknown_foreground_stops_install(self):
         proc, marker = self.simulated_cycle(titles_error=True)
         self.assertTrue(proc.returncode != 0 and not marker.exists())
 
-    @expectedFailure
+    def test_install_only_refuses_running_title(self):
+        proc, marker = self.simulated_cycle(before="running", launch=False)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("install-only mode cannot close", proc.stdout)
+        self.assertFalse(marker.exists())
+
+    def test_rejects_metadata_for_another_title(self):
+        (self.candidate / "sce_sys/param.json").write_text('{"titleId":"PPSA99999"}')
+        proc = self.cycle()
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(f"does not identify requested title {TITLE}", proc.stderr)
+
     def test_unobserved_launch_is_inconclusive(self):
         proc, _ = self.simulated_cycle(after="closed")
         self.assertNotEqual(proc.returncode, 0)
 
-    @expectedFailure
     def test_extra_manifest_entry_stops_before_connect(self):
         (self.candidate / "extra").touch()
-        self.assertIn("differs from its SHA256SUMS", self.cycle().stdout)
+        self.assertIn("differs from its SHA256SUMS", self.cycle().stderr)
 
-    @expectedFailure
     def test_preserve_previous_command_on_interrupted_promotion(self):
         self.ftp.files["/command"] = b"old"
         self.ftp.dropped = True
@@ -161,14 +169,12 @@ class ProtocolTests(TestCase):
             self.invoke("put", self.candidate / "asset", "/command")
         self.assertEqual(self.ftp.files.get("/command"), b"old")
 
-    @expectedFailure
     def test_preserve_previous_evidence_on_failed_fetch(self):
         evidence = self.root / "previous"
         evidence.write_bytes(b"record")
         self.invoke("fetch", self.root, "/previous")
         self.assertTrue(evidence.is_file() and evidence.read_bytes() == b"record")
 
-    @expectedFailure
     def test_settle_rejects_same_size_asset_corruption(self):
         for item in self.candidate.rglob("*"):
             if item.is_file():

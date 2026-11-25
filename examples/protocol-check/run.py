@@ -30,7 +30,7 @@ def run(candidate, out):
             raise ValueError(f"Set {key}")
     if candidate.name != TITLE or json.loads((candidate / "sce_sys/param.json").read_text())["titleId"] != TITLE:
         raise ValueError("Wrong candidate title")
-    subprocess.run(["sha256sum", "-c", "--quiet", "../SHA256SUMS"], cwd=candidate, check=True)
+    console("validate", TITLE, candidate)
     out.mkdir(parents=True, exist_ok=False)
     # A new registration is staged once. Refuse an occupied identity or another mounted source.
     api = runpy.run_path(str(CLI))

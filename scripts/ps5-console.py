@@ -7,6 +7,7 @@
   ps5-console.py state   <TITLE>                     is the title running?
   ps5-console.py titles                              every title that is running
   ps5-console.py where   <TITLE>                     the folder or image it is mounted from
+  ps5-console.py validate <TITLE> <folder>            check the local app folder and title
   ps5-console.py install <TITLE> <folder>            upload a frozen app folder, verified
   ps5-console.py settle  <TITLE> <folder> [seconds]  watch, then compare the install again
   ps5-console.py put     <local-file> <remote-file>  upload one file, verified
@@ -31,10 +32,12 @@ from pathlib import Path
 from posixpath import dirname, join
 import hashlib
 import io
+import json
 import os
 import re
 import socket
 import sys
+from tempfile import NamedTemporaryFile
 import time
 
 SELF_MAGICS = (b"\x54\x14\xf5\xee", b"\x4f\x15\x3d\x1d")
@@ -112,11 +115,15 @@ def mounted_source(ftp, title):
     for kind, name in (("image", "mount_img.lnk"), ("folder", "mount.lnk")):
         try:
             data = readback(ftp, f"/user/app/{title}/{name}")
-        except all_errors:
-            continue
+        except error_perm as error:
+            message = str(error).lower()
+            if message.startswith("550") and ("no such" in message or "not found" in message):
+                continue
+            raise
         path = data.split(b"\0", 1)[0].decode("utf-8", "replace").strip().rstrip("/")
-        if path.startswith("/"):
-            return kind, path
+        if not path.startswith("/"):
+            fail(f"invalid ShadowMount link for {title}", 1)
+        return kind, path
     return None
 
 
@@ -128,6 +135,14 @@ def readback(ftp, path):
 
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def file_digest(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(BLOCK), b""):
+            digest.update(chunk)
+    return digest
 
 
 def remove_if_present(ftp, path):
@@ -180,16 +195,25 @@ def verify(ftp, path, data):
     raise RuntimeError(f"readback of {path} differs: {len(got)} bytes, {sha256(got)[:16]}")
 
 
-def candidate_files(folder):
+def candidate_files(folder, title):
     """The folder's files, with the two that make the app startable last."""
     critical = [folder / "eboot.bin", folder / "sce_sys/param.json"]
-    files = sorted(item for item in folder.rglob("*") if item.is_file())
+    entries = list(folder.rglob("*"))
+    if folder.is_symlink() or any(item.is_symlink() for item in entries):
+        fail("candidate must not contain symbolic links", 2)
+    files = sorted(item for item in entries if item.is_file())
     for item in critical:
         if item not in files:
             fail(f"missing {item}", 2)
+    try:
+        metadata = json.loads(critical[1].read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        fail(f"invalid metadata in {critical[1]}: {error}", 2)
+    if not isinstance(metadata, dict) or metadata.get("titleId") != title:
+        fail(f"param.json does not identify requested title {title}", 2)
     for item in files:
         relative = item.relative_to(folder).as_posix()
-        if any(c in relative for c in "\r\n") or ".." in relative.split("/"):
+        if any(c in relative for c in "\r\n\\") or ".." in relative.split("/"):
             fail(f"unsafe path: {relative!r}", 2)
     return [item for item in files if item not in critical] + critical, critical
 
@@ -217,9 +241,23 @@ def command_where(arguments):
           "unknown: no mount link (not mounted by ShadowMount Plus yet)")
 
 
+def command_validate(arguments):
+    folder = Path(arguments[1])
+    files, _ = candidate_files(folder, title_id(arguments[0]))
+    manifest = folder.parent / "SHA256SUMS"
+    try:
+        recorded = manifest.read_text(encoding="utf-8").splitlines()
+        actual = {f"{file_digest(item).hexdigest()}  ./{item.relative_to(folder).as_posix()}"
+                  for item in files}
+    except (OSError, ValueError) as error:
+        fail(f"could not verify {manifest}: {error}", 2)
+    if len(recorded) != len(actual) or set(recorded) != actual:
+        fail("the candidate differs from its SHA256SUMS", 1)
+
+
 def command_install(arguments):
     title, folder = title_id(arguments[0]), Path(arguments[1])
-    files, critical = candidate_files(folder)
+    files, critical = candidate_files(folder, title)
     root = install_root(title)
     with connect() as ftp:
         if running(ftp, title):
@@ -257,7 +295,8 @@ def command_install(arguments):
             except Exception:
                 remove_if_present(ftp, temporary)
                 raise
-            remove_if_present(ftp, remote)
+            # ftpsrv renames over an existing path on the same filesystem.
+            # Preserve the previous destination if promotion fails.
             ftp.rename(temporary, remote)
             uploaded += 1
             if label.startswith("size only"):
@@ -297,12 +336,21 @@ def command_install(arguments):
         fail(f"{title} started while its files were being replaced", 1)
 
 
+def request_stored_bytes(ftp):
+    try:
+        ftp.sendcmd("SELF")
+    except error_perm as error:
+        # Plain FTP servers can already be serving the stored bytes.
+        if str(error).split(maxsplit=1)[0] not in {"500", "502", "504"}:
+            raise
+
+
 def command_settle(arguments):
     """After a crash a console can lose what was written just before it, leaving
     files of zero bytes. Watch for a while, then compare the install again."""
     title, folder = title_id(arguments[0]), Path(arguments[1])
     window = int(arguments[2]) if len(arguments) > 2 else 130
-    files, critical = candidate_files(folder)
+    files, critical = candidate_files(folder, title)
     root = install_root(title)
     watched = critical
     start = time.time()
@@ -310,7 +358,7 @@ def command_settle(arguments):
     while time.time() - start < window:
         try:
             with connect() as ftp:
-                ftp.sendcmd("SELF")  # a new session shows signed files as their ELF view
+                request_stored_bytes(ftp)
                 ok = all(ftp.size(join(root, item.relative_to(folder).as_posix())) ==
                          item.stat().st_size for item in watched)
         except SystemExit:
@@ -323,14 +371,16 @@ def command_settle(arguments):
         time.sleep(min(15, max(0, window - (time.time() - start))))
     wrong = []
     with connect() as ftp:
-        ftp.sendcmd("SELF")
+        request_stored_bytes(ftp)
         for item in files:
             relative = item.relative_to(folder).as_posix()
-            data = item.read_bytes()
+            remote = join(root, relative)
             try:
-                same = ftp.size(join(root, relative)) == len(data)
-                if same and item in watched:
-                    same = readback(ftp, join(root, relative)) == data
+                same = ftp.size(remote) == item.stat().st_size
+                if same:
+                    expected, actual = file_digest(item), hashlib.sha256()
+                    ftp.retrbinary(f"RETR {remote}", actual.update, blocksize=BLOCK)
+                    same = actual.digest() == expected.digest()
             except all_errors:
                 same = False
             if not same:
@@ -360,7 +410,6 @@ def command_put(arguments):
         except Exception:
             remove_if_present(ftp, temporary)
             raise
-        remove_if_present(ftp, remote)
         ftp.rename(temporary, remote)
     print(f"put {remote}: {len(data)} bytes, {label}")
 
@@ -429,15 +478,33 @@ def command_fetch(arguments):
                             if facts.get("type") == "file"]
             else:
                 remotes.append(remote)
+        targets = {}
         for remote in remotes:
-            target = out / remote.strip("/").replace("/", "_")
+            name = remote.strip("/").replace("/", "_")
+            if name in {"", ".", ".."} or any(c in name for c in "\r\n"):
+                fail(f"invalid evidence path: {remote!r}", 2)
+            if name in targets and targets[name] != remote:
+                fail(f"evidence paths overlap in the output directory: {remote}", 2)
+            targets[name] = remote
+        for name, remote in targets.items():
+            target = out / name
+            partial = None
             try:
-                with open(target, "wb") as sink:
-                    ftp.retrbinary(f"RETR {remote}", sink.write, blocksize=BLOCK)
-                print(f"saved {remote} -> {target} ({target.stat().st_size} bytes)")
-            except all_errors as error:
-                target.unlink(missing_ok=True)
-                print(f"absent {remote} ({str(error)[:60]})")
+                with NamedTemporaryFile(dir=out, prefix=".fetch-", delete=False) as sink:
+                    partial = Path(sink.name)
+                    try:
+                        ftp.retrbinary(f"RETR {remote}", sink.write, blocksize=BLOCK)
+                    except error_perm as error:
+                        message = str(error).lower()
+                        if message.startswith("550") and ("no such" in message or "not found" in message):
+                            print(f"absent {remote} ({str(error)[:60]})")
+                            continue
+                        raise
+                partial.replace(target)
+            finally:
+                if partial is not None:
+                    partial.unlink(missing_ok=True)
+            print(f"saved {remote} -> {target} ({target.stat().st_size} bytes)")
 
 
 def command_errors(arguments):
@@ -454,7 +521,8 @@ def command_errors(arguments):
 
 
 COMMANDS = {"state": (command_state, 1), "titles": (command_titles, 0),
-            "where": (command_where, 1), "install": (command_install, 2),
+            "where": (command_where, 1), "validate": (command_validate, 2),
+            "install": (command_install, 2),
             "settle": (command_settle, 2), "put": (command_put, 2),
             "fetch": (command_fetch, 2), "size": (command_size, 1),
             "wait": (command_wait, 2), "errors": (command_errors, 0)}

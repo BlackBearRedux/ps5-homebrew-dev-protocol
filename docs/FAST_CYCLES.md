@@ -67,9 +67,8 @@ prints one line per step:
 7. fetches the logs named on the command line and the newest error record;
 8. stops at the first anomaly and never retries.
 
-It replaces the files of a title the console already knows. A title installed for the
-first time must be registered first (ShadowMount Plus picks it up from its scan folder);
-launching an unregistered title fails.
+For a first install, the cycle waits for ShadowMount Plus to register the folder
+from its scan path. An unknown or different mount prevents launch.
 
 Write a cycle as a script file and run the file. Long commands passed inline through
 another shell (PowerShell to WSL, SSH) lose their quoting in ways that are slow to find.
@@ -104,7 +103,8 @@ that is running.
   `/mnt/sandbox` and answers `running` or `closed`: no input, no screenshot, no guess.
 - **Read back what you upload.** A transfer that reports success can still have stored
   something else. Signed files need care: a new FTP session may return an ELF view of a
-  signed file, so compare the stored bytes (ftpsrv's `SELF` command) or fall back to size.
+  signed file. The upload check reports any size-only result. The settle check requires
+  a byte match for every file and uses ftpsrv's `SELF` command for the stored bytes.
 - **Let the console settle, then compare again.** After a crash, a console can come back
   with the files written just before it as zero bytes, and the app then "cannot start"
   for a reason that has nothing to do with the build. Waiting about two minutes after an

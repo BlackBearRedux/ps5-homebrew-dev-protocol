@@ -20,6 +20,7 @@
 #   PS5_AGENT       who holds the lock, written into it (default: user@host)
 #   PS5_ELF_PORT    ELF loader port (default 9021)
 #   PS5_SETTLE      seconds to watch after the upload (default 130; 0 skips)
+#   PS5_REGISTRATION_WAIT  seconds to wait for a new folder registration (default 60)
 #   PS5_RUN         seconds to let the title run before collecting (default 45);
 #                   with PS5_READY_LOG, the longest wait for its line
 #   PS5_READY_LOG, PS5_READY_PATTERN
@@ -90,21 +91,32 @@ step() { echo "== $*"; }
 stop() { echo "STOP: $*"; exit "${code:-1}"; }
 
 # The candidate is what was frozen (freeze-candidate.sh writes the manifest).
-sums=$(cd -- "$candidate/.." && pwd)/SHA256SUMS
-[[ -f $sums ]] || stop "no SHA256SUMS beside $candidate: freeze the candidate first"
-(cd -- "$candidate" && sha256sum -c --quiet "$sums") || stop "the candidate differs from its SHA256SUMS"
+"${console[@]}" validate "$title" "$candidate" || stop "invalid candidate"
 
 state=$("${console[@]}" state "$title") || { code=4 stop "the console is not answering; nothing was sent"; }
-errors_before=$("${console[@]}" errors 1)
-step "before: $state; $errors_before; mounted from: $("${console[@]}" where "$title")"
-# Another title on screen is someone's session: nothing is launched over it.
-others=$("${console[@]}" titles | sed -e 's/^running: //' -e "s/\\b$title\\b//g" -e 's/none//' | xargs)
-if [[ ${PS5_LAUNCH:-1} == 1 && -n $others && ${PS5_OTHER_TITLES:-0} != 1 ]]; then
-    stop "another title is running ($others): not launching over it"
+[[ $state == closed || $state == running ]] || stop "cannot determine title state"
+if [[ $state == running && ${PS5_LAUNCH:-1} == 0 ]]; then
+    stop "the title is running; install-only mode cannot close it"
 fi
+errors_before=$("${console[@]}" errors 1) || stop "cannot read the initial console error record"
+mount=$("${console[@]}" where "$title") || stop "cannot determine the mounted source"
+step "before: $state; $errors_before; mounted from: $mount"
+check_running_titles() {
+    local titles id
+    local -a running_titles
+    titles=$("${console[@]}" titles) || stop "cannot establish which titles are running"
+    [[ $titles == 'running: '* ]] || stop "invalid running-title list"
+    read -ra running_titles <<< "${titles#running: }"
+    for id in "${running_titles[@]}"; do
+        if [[ $id != none && $id != "$title" && ${PS5_OTHER_TITLES:-0} != 1 ]]; then
+            stop "another title is running ($id): not launching over it"
+        fi
+    done
+}
+[[ ${PS5_LAUNCH:-1} != 1 ]] || check_running_titles
 if [[ $state == running ]]; then
-    [[ -n ${PS5_LOCK:-} ]] || stop "the title is running: close it, or set PS5_LOCK so the cycle may"
-    bash "$here/send-controller.sh" close "$title" "$PS5_HOST" "$port" > /dev/null 2>&1
+    bash "$here/send-controller.sh" close "$title" "$PS5_HOST" "$port" > /dev/null 2>&1 ||
+        stop "the close controller was not delivered"
     for _ in $(seq 20); do
         sleep 2
         [[ $("${console[@]}" state "$title") == closed ]] && break
@@ -123,6 +135,17 @@ fi
 # wrong are the ones worth having.
 problem=
 if [[ ${PS5_LAUNCH:-1} == 1 ]]; then
+    expected_mount="${PS5_INSTALL_ROOT:-/data/homebrew}"
+    expected_mount="folder ${expected_mount%/}/$title"
+    deadline=$((SECONDS + ${PS5_REGISTRATION_WAIT:-60}))
+    while :; do
+        mount=$("${console[@]}" where "$title") || stop "cannot check registration before launch"
+        [[ $mount != "$expected_mount" ]] || break
+        [[ $mount == unknown:* && $SECONDS -lt $deadline ]] ||
+            stop "the requested folder is not registered: $mount"
+        sleep 2
+    done
+    check_running_titles
     primary_start=0
     [[ -z $app_log ]] || primary_start=$("${console[@]}" size "$app_log")
     offset=0
@@ -141,14 +164,23 @@ if [[ ${PS5_LAUNCH:-1} == 1 ]]; then
         step "${problem:-$ready}"
     else
         step "launched $(date -u +%H:%M:%SZ); watching for ${PS5_RUN:-45} s"
-        # A title that ends early is known at once, not after the whole wait.
+        seen_running=0
         while ((SECONDS - started < ${PS5_RUN:-45})); do
             sleep 5
-            [[ $("${console[@]}" state "$title" 2>/dev/null) == running ]] || break
+            observed=$("${console[@]}" state "$title") ||
+                { problem="could not read title state after launch"; break; }
+            if [[ $observed == running ]]; then
+                seen_running=1
+            elif ((seen_running)); then
+                break
+            fi
         done
     fi
     state=$("${console[@]}" state "$title") || { state=unknown; problem="the console stopped answering after the launch: do not retry"; }
     step "after $((SECONDS - started)) s: $state"
+    if [[ $state != running && ( -z ${PS5_READY_LOG:-} || -z ${PS5_READY_PATTERN:-} ) ]]; then
+        problem=${problem:-"the title did not stay running; examine the captured evidence"}
+    fi
     fallback=${PS5_FALLBACK_LOG-/mnt/sandbox/${title}_000/download0/app.log}
     if [[ $state == running && -n $app_log && -n $fallback && $fallback != "$app_log" ]]; then
         primary_end=$("${console[@]}" size "$app_log")
@@ -156,7 +188,7 @@ if [[ ${PS5_LAUNCH:-1} == 1 ]]; then
             fallback_size=$("${console[@]}" size "$fallback")
             if [[ $fallback_size =~ ^[1-9][0-9]*$ ]]; then
                 "${console[@]}" fetch "$out" "$fallback"
-                # A second fetch after close could erase the saved sandbox evidence.
+                # Keep the live sandbox capture and omit its duplicate post-close fetch.
                 keep=()
                 for path in "${logs[@]}"; do
                     [[ $path == "$fallback" || $path == "$app_log" ]] || keep+=("$path")
@@ -166,9 +198,12 @@ if [[ ${PS5_LAUNCH:-1} == 1 ]]; then
         fi
     fi
     if [[ ${PS5_CLOSE:-0} == 1 && $state == running ]]; then
-        bash "$here/send-controller.sh" close "$title" "$PS5_HOST" "$port" > /dev/null 2>&1
+        bash "$here/send-controller.sh" close "$title" "$PS5_HOST" "$port" > /dev/null 2>&1 ||
+            problem=${problem:-"the close controller was not delivered"}
         sleep 6
-        step "closed: $("${console[@]}" state "$title")"
+        closed=$("${console[@]}" state "$title") || closed=unknown
+        step "closed: $closed"
+        [[ $closed == closed ]] || problem=${problem:-"the title did not confirm closure"}
     fi
     if [[ -n $klog_pid ]]; then
         kill "$klog_pid" 2>/dev/null
@@ -177,9 +212,15 @@ if [[ ${PS5_LAUNCH:-1} == 1 ]]; then
     fi
 fi
 
-((${#logs[@]} == 0)) || "${console[@]}" fetch "$out" "${logs[@]}"
-errors_after=$("${console[@]}" errors 1)
-step "after: $errors_after"
-[[ $errors_after == "$errors_before" ]] || echo "NEW ERROR RECORD since the cycle began: read it before the next launch"
+if ((${#logs[@]} != 0)); then
+    "${console[@]}" fetch "$out" "${logs[@]}" || problem=${problem:-"could not retrieve evidence"}
+fi
+if errors_after=$("${console[@]}" errors 1); then
+    step "after: $errors_after"
+    [[ $errors_after == "$errors_before" ]] ||
+        problem=${problem:-"a new console error record appeared; review it before the next launch"}
+else
+    problem=${problem:-"cannot read the final console error record"}
+fi
 echo "evidence: $out"
 [[ -z $problem ]] || stop "$problem"

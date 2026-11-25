@@ -74,7 +74,11 @@ and a person's eyes answer the same questions without it
    export PS5_LOCK=/path/shared/lock-console.txt # one lock file per console
    ```
 
-2. Freeze the built app folder, then run one cycle with it:
+2. Freeze the built app folder, then run one cycle with it. For a known-good
+   candidate, download the folder ZIP and `SHA256SUMS` from the
+   [native app boilerplate release](https://github.com/BlackBearRedux/ps5-native-app-boilerplate/releases/tag/1.000.000).
+   Check the checksum and [GitHub Actions provenance](https://github.com/BlackBearRedux/ps5-native-app-boilerplate/blob/1.000.000/docs/RELEASE_ZIP.md#verify-a-downloaded-release),
+   extract the ZIP, and pass the extracted `PPSA99999/` folder to the freeze script.
 
    ```bash
    scripts/freeze-candidate.sh dist/PPSA99999 ~/candidates/first-run
@@ -135,6 +139,17 @@ The full procedure is in the [runbook](docs/RUNBOOK.md).
 | [`scripts/readme-footer/`](scripts/readme-footer) | Generator for the standard footer used across BlackBearReloaded repositories |
 | [`AGENTS.md`](AGENTS.md) | Instructions for coding agents |
 | `results/` | Local evidence output (ignored by Git) |
+
+## Test the protocol locally
+
+Run the offline regression suite from the repository root on Linux or WSL:
+
+```bash
+python3 examples/protocol-check/test_host.py
+```
+
+For a hardware example that exercises scripted input, captures, and persisted
+logs, see [Protocol Check](examples/protocol-check/README.md).
 
 ## Contributing
 

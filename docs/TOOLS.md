@@ -43,7 +43,7 @@ breakpoints can change timing, memory layout, and process state.
 | --- | --- |
 | `Invoke-Ps5Cycle.ps1` | Caller. Legacy Windows cycle that captures screenshots through chiaki-ng Remote Play; kept for projects that still call it. New work uses `ps5-cycle.sh`. |
 | `ps5-cycle.sh` | Script acquires and releases the lock; one cycle from WSL or Linux: close, verified install, settle, launch, wait for the app's line, logs and kernel log. With `PS5_LAUNCH=0` and a closed title it takes no lock. |
-| `ps5-console.py` | None needed: `state`, `titles`, `where`, `size`, `wait`, `errors` and `fetch` only read; `install` refuses a running title and a folder the title is not mounted from; `put` writes one named file. |
+| `ps5-console.py` | None needed: `validate` checks local files and the manifest. `state`, `titles`, `where`, `size`, `wait`, `errors` and `fetch` only read; `install` refuses a running title and a folder the title is not mounted from; `put` writes one named file. |
 | `freeze-candidate.sh` | None: local only. Copies a built folder and writes its `SHA256SUMS`. |
 | `send-controller.sh` | Caller; launches or closes one exact title. |
 | `Remove-Ps5Experiments.ps1` | Caller; removes only explicitly named experiments. |
@@ -66,6 +66,7 @@ Common environment variables:
 | `PS5_HOST` | All PowerShell helpers, `ps5-cycle.sh`, `ps5-console.py` | Console address when `-Ps5Host` is omitted |
 | `PS5_LOCK` | `ps5-cycle.sh` | Lock file shared by everyone who uses that console |
 | `PS5_SETTLE`, `PS5_RUN`, `PS5_LAUNCH`, `PS5_CLOSE` | `ps5-cycle.sh` | Seconds to watch after the upload (130), seconds to run (45), `0` to install only, `1` to close after the run |
+| `PS5_REGISTRATION_WAIT` | `ps5-cycle.sh` | Maximum wait for the expected folder registration after staging (60 seconds by default). |
 | `PS5_APP_LOG` | `ps5-cycle.sh` | Persistent app log collected alongside explicit evidence paths after a launch. Defaults to `/data/<TITLE_ID>/app.log`. Set an empty value to omit the automatic fetch. |
 | `PS5_FALLBACK_LOG` | `ps5-cycle.sh` | If the persistent log is missing or its size is unchanged, collect this nonempty legacy file before closing the title. Defaults to `/mnt/sandbox/<TITLE_ID>_000/download0/app.log`. Override for older filenames or set empty to disable. |
 | `PS5_READY_LOG`, `PS5_READY_PATTERN` | `ps5-cycle.sh` | A log the app writes and a regular expression: go on when a new line matches, fail after `PS5_RUN` seconds without one |

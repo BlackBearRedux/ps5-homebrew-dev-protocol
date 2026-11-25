@@ -42,11 +42,11 @@ remains available for another run.
 
 | Check | Evidence |
 | --- | --- |
-| Freeze, install, mount and settle | SHA256SUMS beside the frozen folder, mount link and cycle output. The settle helper compares every file's size and the bytes of the executable and metadata. |
+| Freeze, install, mount and settle | SHA256SUMS beside the frozen folder, mount link and cycle output. The settle helper compares the size and SHA-256 of every candidate file. |
 | Launch, readiness and scripted input | Running-title state, app log, kernel checkpoint and response to the command uploaded with `put`. |
 | Synchronous capture and evidence retrieval | Two complete PPM files downloaded using `fetch`, with the expected marker color at a known coordinate. |
 | Close and system errors | Closed-title state and unchanged most recent error record. Raw cycle and system logs are in the selected results folder. |
-| Host failure cases | The offline suite exercises lock ownership, candidate mutation, FTP failures, evidence preservation and cycle outcomes. Expected failures identify open protocol defects. When a fix lands, remove the corresponding expected-failure marker and keep the test. |
+| Host failure cases | The offline suite exercises lock ownership, candidate mutation, FTP failures, evidence preservation and cycle outcomes. |
 
 For a project-specific acceptance case, substitute its own content and observable result.
 Physical controller input, HDMI scanout, audio playback, firmware compatibility beyond the
