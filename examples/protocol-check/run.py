@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / "scripts/ps5-console.py"
 TITLE = "PPSA99871"
 INSTALL = "/data/homebrew/" + TITLE
+APP_LOG = f"/data/{TITLE}/app.log"
 LIVE = "/mnt/sandbox/" + TITLE + "_000/download0"
 
 
@@ -62,6 +63,7 @@ def run(candidate, out):
         else:
             raise RuntimeError("Registration not confirmed")
         baseline = console("errors", "1")
+        log_offset = int(console("size", APP_LOG))
     finally:
         if lock.read_text() == token:
             lock.unlink()
@@ -69,7 +71,7 @@ def run(candidate, out):
     print("Registered. Starting the managed cycle.", flush=True)
     receipt = LIVE + "/accept-" + token + ".txt"
     env = dict(os.environ, PS5_AGENT=token, PS5_RUN="90", PS5_LAUNCH="1", PS5_CLOSE="1",
-               PS5_READY_LOG=receipt, PS5_READY_PATTERN="^ACCEPTED$", PS5_RESULTS=str(out),
+               PS5_APP_LOG=APP_LOG, PS5_READY_LOG=receipt, PS5_READY_PATTERN="^ACCEPTED$", PS5_RESULTS=str(out),
                PS5_OTHER_TITLES="0", PS5_LOCK_WAIT="0", PS5_KLOG="1")
     args = ["bash", ROOT / "scripts/ps5-cycle.sh", TITLE, candidate, "/data/shadowmount/debug.log"]
     with (out / "cycle.txt").open("w") as log, subprocess.Popen(
@@ -110,6 +112,13 @@ def run(candidate, out):
         raise RuntimeError("Cycle, evidence, or teardown check failed")
     if "PROTOCOL INPUT SAVED" not in (out / "klog.txt").read_text(errors="replace"):
         raise ValueError("Missing kernel log checkpoint")
+    saved_log = out / APP_LOG.strip("/").replace("/", "_")
+    if not saved_log.is_file():
+        raise ValueError("After close: persistent app log unavailable; see sandbox log and klog")
+    with saved_log.open("rb") as stream:
+        stream.seek(log_offset)
+        if stream.read() != applog.read_bytes():
+            raise ValueError("After close: persistent log for this run differs from the live app log")
     digest = hashlib.sha256((candidate / "eboot.bin").read_bytes()).hexdigest()
     print(f"Passed {TITLE}, eboot SHA-256 {digest}", flush=True)
 

@@ -9,6 +9,7 @@
 extern "C" {
 int sceKernelOpen(const char *, int, int);
 int sceKernelClose(int);
+int sceKernelMkdir(const char *, int);
 std::int64_t sceKernelRead(int, void *, std::size_t);
 std::int64_t sceKernelWrite(int, const void *, std::size_t);
 int sceKernelDebugOutText(int, const char *);
@@ -16,19 +17,35 @@ int sceKernelDebugOutText(int, const char *);
 
 namespace {
 constexpr char command[] = "/download0/protocol-command.txt";
+constexpr char persistent[] = "/data/PPSA99871/app.log";
+bool persistent_available = false;
 constexpr char report[] = "/download0/protocol-log.txt";
 constexpr char build[] = "PROTOCOL CHECK V1";
 unsigned frame = 0;
 bool changed = false;
 
+bool write_line(const char *path, const char *line, bool reset = false)
+{
+    int fd = sceKernelOpen(path, O_WRONLY | O_CREAT | (reset ? O_TRUNC : O_APPEND), 0666);
+    if (fd < 0) return false;
+    auto remaining = std::strlen(line);
+    while (remaining > 0) {
+        auto n = sceKernelWrite(fd, line, remaining);
+        if (n <= 0) break;
+        line += n;
+        remaining -= static_cast<std::size_t>(n);
+    }
+    return sceKernelClose(fd) == 0 && remaining == 0;
+}
+
 bool record(const char *line, bool reset = false)
 {
     (void)sceKernelDebugOutText(0, line);
-    int fd = sceKernelOpen(report, O_WRONLY | O_CREAT | (reset ? O_TRUNC : O_APPEND), 0666);
-    if (fd < 0) return false;
-    const auto len = std::strlen(line);
-    const bool ok = sceKernelWrite(fd, line, len) == static_cast<std::int64_t>(len);
-    return sceKernelClose(fd) == 0 && ok;
+    if (persistent_available && !write_line(persistent, line)) {
+        persistent_available = false;
+        (void)sceKernelDebugOutText(0, "PROTOCOL persistent app log unavailable\n");
+    }
+    return write_line(report, line, reset);
 }
 
 bool advance_requested()
@@ -60,6 +77,10 @@ void draw(ps5::demo::Canvas &canvas) noexcept
 
 int main()
 {
+    (void)sceKernelMkdir("/data/PPSA99871", 0777);
+    persistent_available = write_line(persistent, "");
+    (void)sceKernelDebugOutText(0, persistent_available ? "PROTOCOL log /data/PPSA99871/app.log\n"
+                                                       : "PROTOCOL log /download0/protocol-log.txt\n");
     int fd = sceKernelOpen(command, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd < 0 || sceKernelClose(fd) != 0 || !record("PROTOCOL START V1\n", true)) {
         (void)sceKernelDebugOutText(0, "PROTOCOL START FAILED\n");

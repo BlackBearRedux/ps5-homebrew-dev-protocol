@@ -15,6 +15,7 @@
 #   PS5_HOST        console address (required)
 #   PS5_LOCK        lock file shared by everyone who uses this console (required to
 #                   launch or close; an install of a closed title needs none)
+#   PS5_APP_LOG     persistent app log to collect (default /data/<TITLE>/app.log; empty disables)
 #   PS5_AGENT       who holds the lock, written into it (default: user@host)
 #   PS5_ELF_PORT    ELF loader port (default 9021)
 #   PS5_SETTLE      seconds to watch after the upload (default 130; 0 skips)
@@ -48,6 +49,14 @@ console=(python3 "$here/ps5-console.py")
     { echo "set PS5_LOCK to the lock file shared for this console" >&2; exit 2; }
 [[ $title =~ ^PPSA[0-9]{5}$ ]] || { echo "invalid title ID: $title" >&2; exit 2; }
 [[ -f $candidate/eboot.bin ]] || { echo "no eboot.bin in $candidate" >&2; exit 2; }
+app_log=${PS5_APP_LOG-/data/$title/app.log}
+if [[ -n $app_log && ${PS5_LAUNCH:-1} == 1 ]]; then
+    found=0
+    for path in "${logs[@]}"; do
+        [[ $path != "$app_log" ]] || found=1
+    done
+    ((found)) || logs+=("$app_log")
+fi
 port=${PS5_ELF_PORT:-9021}
 out=${PS5_RESULTS:-$here/../results/$title-$(date -u +%Y%m%dT%H%M%SZ)}
 mkdir -p "$out"
