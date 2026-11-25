@@ -1,12 +1,12 @@
 # Controlled IPTV validation example
 
-This optional example shows how an application-specific wrapper can reuse the
-generic managed cycle while adding fixture hosting and persisted receipt
-validation. It is not required by the core protocol.
+This legacy project example wraps the Windows cycle and adds fixture hosting
+and saved receipt validation. For the app-neutral Linux and WSL example, see
+[Protocol Check](../protocol-check/README.md).
 
 `Run-IptvCycle.ps1` accepts an already-built app directory and optional FFPFSC
 image. `Run-IptvCodecCycle.ps1` additionally requires the root of the IPTV app project
-([ProsperoTV](https://github.com/blackbearreloaded/ProsperoTV))
+([ProsperoTV](https://github.com/ThatGuyKalvin/ProsperoTV))
 because it calls that project's MkPFS and UFS2 setup scripts.
 
 Generated MPEG-TS fixtures are intentionally ignored. Prepare the files listed
