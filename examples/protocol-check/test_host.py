@@ -89,7 +89,7 @@ class ProtocolTests(TestCase):
         self.assertIn("differs from its SHA256SUMS", proc.stdout)
         self.assertFalse((self.root / "lock").exists())
 
-    def simulated_cycle(self, *, titles_error=False, after="running", app_log=None, logs=()):
+    def simulated_cycle(self, *, titles_error=False, after="running", app_log=None, logs=(), legacy=False):
         # Use the actual coordinator with inert transport and an isolated script directory.
         helpers = self.root / "helpers"
         helpers.mkdir()
@@ -99,6 +99,8 @@ class ProtocolTests(TestCase):
             "import os, sys\nfrom pathlib import Path\n"
             "op = sys.argv[1]\nmarker = Path(os.environ['MARKER'])\n"
             "if op == 'install': marker.touch()\n"
+            "if op == 'size': print(54 if os.environ['LEGACY'] == '1' and "
+            "sys.argv[2].endswith('/download0/app.log') else 0); sys.exit(0)\n"
             "if op == 'fetch': print('evidence', *sys.argv[3:])\n"
             "if op == 'titles' and os.environ['TITLES_ERROR'] == '1': sys.exit(4)\n"
             "print({'titles':'running: none', 'state':os.environ['AFTER'] if marker.exists() "
@@ -108,7 +110,8 @@ class ProtocolTests(TestCase):
         env = dict(os.environ, PS5_HOST="fixture", PS5_LOCK=str(self.root / 'lock'),
                    PS5_RESULTS=str(self.root / 'logs'), PS5_RUN="0", PS5_SETTLE="0", PS5_KLOG="0",
                    PS5_LAUNCH="1", PS5_CLOSE="0", PS5_READY_LOG="", PS5_OTHER_TITLES="0",
-                   MARKER=str(marker), TITLES_ERROR=str(int(titles_error)), AFTER=after)
+                   MARKER=str(marker), TITLES_ERROR=str(int(titles_error)), AFTER=after,
+                   LEGACY=str(int(legacy)), PS5_FALLBACK_LOG=f'/mnt/sandbox/{TITLE}_000/download0/app.log')
         env.pop('PS5_APP_LOG', None)
         if app_log is not None:
             env['PS5_APP_LOG'] = app_log
@@ -128,6 +131,12 @@ class ProtocolTests(TestCase):
     def test_disable_default_fetch_preserves_explicit_logs(self):
         proc, _ = self.simulated_cycle(app_log='', logs=('/data/other.log',))
         self.assertIn('evidence /data/other.log\n', proc.stdout)
+
+    def test_legacy_evidence_is_fetched_once_while_running(self):
+        legacy = f'/mnt/sandbox/{TITLE}_000/download0/app.log'
+        proc, _ = self.simulated_cycle(legacy=True, logs=(legacy, '/data/other.log'))
+        evidence = [line for line in proc.stdout.splitlines() if line.startswith('evidence ')]
+        self.assertEqual(evidence, [f'evidence {legacy}', 'evidence /data/other.log'])
 
     @expectedFailure
     def test_unknown_foreground_stops_install(self):

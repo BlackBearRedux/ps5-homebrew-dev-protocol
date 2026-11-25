@@ -61,3 +61,9 @@ boilerplate revision `f7e4f2b`. The executable SHA-256 was
 Both captures passed the pixel checks. The app log recorded start, readiness, and the input response
 in order. ShadowMount logged the matching title starting, stopping, and releasing its runtime layers.
 The error record was unchanged and FTP, klog, and the loader answered after closure.
+
+A second firmware 6.02 validation used revision `dec8e8b` for persistent logging.
+The title appended 54 bytes to `/data/PPSA99871/app.log`, and the runner retrieved
+the 87-byte file after closure. Starting at the pre-launch offset of 33 bytes, the
+saved checkpoints were `PROTOCOL START V1`, `PROTOCOL READY`, and `PROTOCOL INPUT SAVED`.
+The existing writable data mount supported this run without a Lapy helper.
