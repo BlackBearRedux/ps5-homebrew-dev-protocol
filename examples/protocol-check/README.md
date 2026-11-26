@@ -14,7 +14,7 @@ while the title is open. Screenshots and input commands also use the live sandbo
 
 ## Build and run
 
-Use Linux or WSL with the configured [native app boilerplate](https://github.com/BlackBearRedux/ps5-native-app-boilerplate)
+Use Linux or WSL with the configured [native app boilerplate](https://github.com/BlackBearRevived/ps5-native-app-boilerplate)
 in a sibling checkout. Revision `f7e4f2b` provides the tested renderer and build tools.
 Set `PS5_BOILERPLATE` for another checkout location. The build uses the boilerplate's existing
 ignored build and dist directories. Choose a new candidate path on each build and a new

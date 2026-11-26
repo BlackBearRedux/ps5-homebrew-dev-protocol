@@ -76,8 +76,8 @@ and a person's eyes answer the same questions without it
 
 2. Freeze the built app folder, then run one cycle with it. For a known-good
    candidate, download the folder ZIP and `SHA256SUMS` from the
-   [native app boilerplate release](https://github.com/BlackBearRedux/ps5-native-app-boilerplate/releases/tag/1.000.000).
-   Check the checksum and [GitHub Actions provenance](https://github.com/BlackBearRedux/ps5-native-app-boilerplate/blob/1.000.000/docs/RELEASE_ZIP.md#verify-a-downloaded-release),
+   [native app boilerplate release](https://github.com/BlackBearRevived/ps5-native-app-boilerplate/releases/tag/1.000.000).
+   Check the checksum and [GitHub Actions provenance](https://github.com/BlackBearRevived/ps5-native-app-boilerplate/blob/1.000.000/docs/RELEASE_ZIP.md#verify-a-downloaded-release),
    extract the ZIP, and pass the extracted `PPSA99999/` folder to the freeze script.
 
    ```bash
